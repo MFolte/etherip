@@ -37,19 +37,18 @@ public class CNSymbolPath extends CNPath
     {
         private static final int MAX_BYTE_VALUE = 255;
 		private final String path;
-        private final Integer index;
+        private final Integer[] indexes;
 		private boolean firstElement;
 
-        public PathElement(final boolean firstElement, final String path, final Integer index)
+        public PathElement(final boolean firstElement, final String path, final Integer[] indexes)
         {
             this.firstElement = firstElement;
             if (path.matches("^[0-9]+$")) {
             	this.path = null;
-            	this.index = Integer.parseInt(path);
-            }
-            else {
+            	this.indexes = new Integer[] { Integer.parseInt(path) };
+            } else {
             	this.path = path;
-                this.index = index;
+                this.indexes = indexes;
             }
         }
 
@@ -58,9 +57,9 @@ public class CNSymbolPath extends CNPath
             return this.path;
         }
 
-        public Integer getIndex()
+        public Integer[] getIndexes()
         {
-            return this.index;
+            return this.indexes;
         }
         
         public int getEncodedSize() {
@@ -75,10 +74,12 @@ public class CNSymbolPath extends CNPath
         			size += 1;
         		}
         	}
-        	if (index != null) {
-        		size += 2;
-        		if (index > MAX_BYTE_VALUE) {
-        			size += 2;
+        	if (indexes != null) {
+        		for(Integer index : indexes) {
+	        		size += 2;
+	        		if (index > MAX_BYTE_VALUE) {
+	        			size += 2;
+	        		}
         		}
         	}
         	return size;
@@ -96,6 +97,8 @@ public class CNSymbolPath extends CNPath
 
 		private void encodeInstanceId(final ByteBuffer buf) {
 			buf.put(new byte[] {0x20, 0x6B}); // Logical Segment for Symbol Class ID
+			
+			Integer index = indexes[0];
 			if (index > MAX_BYTE_VALUE) {
 				buf.put((byte) 0x25);
 				buf.put((byte) 0);
@@ -121,17 +124,19 @@ public class CNSymbolPath extends CNPath
 		}
 
 		private void encodeElementId(final ByteBuffer buf) {
-			if (index != null)
+			if (indexes != null)
             {
-            	if (index > MAX_BYTE_VALUE) {
-            		buf.put((byte) 0x29);
-            		buf.put((byte) 0);
-            		buf.putShort(index.shortValue());            		
-            	}
-            	else {
-            		buf.put((byte) 0x28);
-            		buf.put(index.byteValue());
-            	}
+				for(Integer index : indexes) {
+	            	if (index > MAX_BYTE_VALUE) {
+	            		buf.put((byte) 0x29);
+	            		buf.put((byte) 0);
+	            		buf.putShort(index.shortValue());            		
+	            	}
+	            	else {
+	            		buf.put((byte) 0x28);
+	            		buf.put(index.byteValue());
+	            	}
+				}
             }
 		}
 
@@ -145,15 +150,21 @@ public class CNSymbolPath extends CNPath
         @Override
         public String toString()
         {
-            if (this.index == null)
-            {
+            if (this.indexes == null) {
                 return this.path;
+            } else if(this.path == null) {
+            	return "[" + this.indexes[0] + "]";
+            } else {
+            	String rtnValue = path;
+            	for(Integer index : indexes) {
+            		rtnValue += "[" + index + "]";
+            	}
+            	return rtnValue;
             }
-            return this.path + "[" + this.index + "]";
         }
     };
 
-    private final Pattern PATTERN_BRACKETS = Pattern.compile("\\[(\\d+)\\]");
+    private final Pattern PATTERN_BRACKETS = Pattern.compile("(.*)\\[([\\d,]+)\\]");
 
     private final List<PathElement> elements = new ArrayList<>();
 
@@ -169,16 +180,18 @@ public class CNSymbolPath extends CNPath
         for (final String s : symbol.split("\\."))
         {
             final Matcher m = this.PATTERN_BRACKETS.matcher(s);
-            Integer index = null;
+            Integer[] indexes = null;
             String path = s;
-            while (m.find())
+            if (m.matches())
             {
-                final String match = m.group().replace("[", "").replace("]",
-                        "");
-                index = Integer.parseInt(match);
-                path = path.replace("[" + match + "]", "");
+            	String[] matchedIndexes = m.group(2).split(",");
+            	indexes = new Integer[matchedIndexes.length];
+            	for(int i = 0; i < matchedIndexes.length; i++) {
+            		indexes[i] = Integer.parseInt(matchedIndexes[i]);
+            	}
+                path = m.group(1);
             }
-            this.elements.add(new PathElement(firstElement, path, index));
+            this.elements.add(new PathElement(firstElement, path, indexes));
             firstElement = false;
         }
     }
